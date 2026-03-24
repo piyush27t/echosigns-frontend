@@ -36,6 +36,8 @@ export const useCaptionSocket = ({ roomId, userId, userName, enabled }: UseCapti
 
     const socket = io(BACKEND_CONFIG.socketUrl, {
       query: { roomId, userId, userName },
+      transports: ['websocket'],
+      reconnection: true,
       reconnectionAttempts: 10,
       reconnectionDelay: 2000,
       timeout: 10000,
@@ -59,6 +61,8 @@ export const useCaptionSocket = ({ roomId, userId, userName, enabled }: UseCapti
 
     socket.on('prediction', (data) => {
       try {
+        if (!data.text) return; // Do not display empty strings
+
         const caption: Caption = {
           id: `${data.userId}-${data.timestamp}`,
           text: data.text,
