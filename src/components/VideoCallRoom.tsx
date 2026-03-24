@@ -2,7 +2,7 @@ import { useEffect, useRef, useMemo } from 'react';
 import { ZegoUIKitPrebuilt } from '@zegocloud/zego-uikit-prebuilt';
 import { ZEGOCLOUD_CONFIG } from '@/config/zegocloud';
 import { useFrameExtractor } from '@/hooks/useFrameExtractor';
-import { useCaptionWebSocket } from '@/hooks/useCaptionWebSocket';
+import { useCaptionSocket } from '@/hooks/useCaptionSocket';
 import { CaptionOverlay } from './CaptionOverlay';
 import { StatusIndicator, CaptionActivity } from './StatusIndicator';
 import { Button } from '@/components/ui/button';
@@ -33,23 +33,24 @@ export const VideoCallRoom = ({ roomId, userName, onLeave }: VideoCallRoomProps)
   
   const userId = useMemo(() => `user_${Math.random().toString(36).substring(2, 9)}`, []);
 
-  // Frame extraction hook (captures and sends gesture frames)
-  const { isExtracting, error: extractionError } = useFrameExtractor({
-    roomId,
-    userId,
-    enabled: true,
-  });
-
-  // WebSocket hook for receiving captions
+  // Socket hook for communication
   const { 
     currentCaption, 
     captions,
     connectionStatus,
-    error: wsError,
-  } = useCaptionWebSocket({
+    error: socketError,
+    emitFrame,
+  } = useCaptionSocket({
     roomId,
     userId,
+    userName,
     enabled: true,
+  });
+
+  // Frame extraction hook
+  const { isExtracting, error: extractionError } = useFrameExtractor({
+    enabled: true,
+    onFrame: emitFrame, // Wire frame capture to socket emission
   });
 
   useEffect(() => {
@@ -155,9 +156,9 @@ export const VideoCallRoom = ({ roomId, userName, onLeave }: VideoCallRoomProps)
       </div>
 
       {/* Error Display */}
-      {(extractionError || wsError) && (
+      {(extractionError || socketError) && (
         <div className="absolute top-20 left-4 z-40 bg-destructive/20 border border-destructive/50 rounded-lg px-4 py-2 text-sm text-destructive">
-          {extractionError || wsError}
+          {extractionError || socketError}
         </div>
       )}
 

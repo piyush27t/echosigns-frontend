@@ -78,7 +78,7 @@ export const JoinRoomForm = ({ onJoin }: JoinRoomFormProps) => {
                 variant="ghost"
                 size="sm"
                 onClick={generateRoomId}
-                className="absolute right-1 top-1/2 -translate-y-1/2 text-xs text-primary hover:text-primary/80"
+                className="absolute right-1 top-1/2 -translate-y-1/2 text-xs text-primary hover:text-white"
               >
                 Generate
               </Button>

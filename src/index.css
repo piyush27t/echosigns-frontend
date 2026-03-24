@@ -109,25 +109,14 @@
 @layer components {
   .caption-overlay {
     @apply fixed bottom-24 left-1/2 -translate-x-1/2 z-50;
-    @apply px-6 py-3 rounded-xl;
-    @apply text-lg font-medium text-center;
-    @apply max-w-[80%] min-w-[200px];
-    background: hsla(var(--caption-bg) / 0.85);
+    @apply px-8 py-4 rounded-2xl;
+    @apply text-center;
+    @apply max-w-[85%] min-w-[240px];
+    background: linear-gradient(135deg, hsla(var(--caption-bg) / 0.9), hsla(var(--card) / 0.8));
     color: hsl(var(--caption-text));
-    backdrop-filter: blur(8px);
-    box-shadow: 0 4px 24px hsla(0 0% 0% / 0.4);
-    animation: caption-fade-in 0.3s ease-out;
-  }
-
-  @keyframes caption-fade-in {
-    from {
-      opacity: 0;
-      transform: translateX(-50%) translateY(10px);
-    }
-    to {
-      opacity: 1;
-      transform: translateX(-50%) translateY(0);
-    }
+    backdrop-filter: blur(12px);
+    border: 1px solid hsla(var(--foreground) / 0.1);
+    box-shadow: 0 8px 32px hsla(0 0% 0% / 0.5), 0 0 1px hsla(var(--foreground) / 0.2);
   }
 
   .status-indicator {

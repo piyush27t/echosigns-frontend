@@ -1,69 +1,83 @@
 import { useRef, useCallback, useEffect, useState } from 'react';
-import { FRAME_CONFIG, BACKEND_CONFIG } from '@/config/zegocloud';
+import { FRAME_CONFIG } from '@/config/zegocloud';
 
 interface UseFrameExtractorOptions {
-  roomId: string;
-  userId: string;
   enabled: boolean;
+  onFrame?: (frameData: string, timestamp: number) => void;
 }
 
-export const useFrameExtractor = ({ roomId, userId, enabled }: UseFrameExtractorOptions) => {
+export interface FrameBufferItem {
+  frame: string;
+  timestamp: number;
+}
+
+export const useFrameExtractor = ({ enabled, onFrame }: UseFrameExtractorOptions) => {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const intervalRef = useRef<number | null>(null);
+  const requestRef = useRef<number | null>(null);
+  const lastCaptureTimeRef = useRef<number>(0);
+  const frameBufferRef = useRef<FrameBufferItem[]>([]);
+  
   const [isExtracting, setIsExtracting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const captureAndSendFrame = useCallback(async () => {
-    const video = videoRef.current;
-    const canvas = canvasRef.current;
+  const captureFrame = useCallback(() => {
+    const now = Date.now();
+    const intervalMs = 1000 / FRAME_CONFIG.fps;
 
-    if (!video || !canvas || video.readyState !== 4) return;
+    if (now - lastCaptureTimeRef.current >= intervalMs) {
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
 
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+      if (video && canvas && video.readyState === 4) {
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          // Draw current video frame to canvas
+          ctx.drawImage(video, 0, 0, FRAME_CONFIG.width, FRAME_CONFIG.height);
 
-    // Draw current video frame to canvas (resized to 224x224)
-    ctx.drawImage(video, 0, 0, FRAME_CONFIG.width, FRAME_CONFIG.height);
+          // Convert to JPEG Base64
+          const base64Image = canvas.toDataURL('image/jpeg', FRAME_CONFIG.quality);
+          const base64Data = base64Image.split(',')[1];
+          const timestamp = now;
 
-    // Convert to JPEG Base64
-    const base64Image = canvas.toDataURL('image/jpeg', FRAME_CONFIG.quality);
-    const base64Data = base64Image.split(',')[1]; // Remove data URL prefix
+          // Add to local buffer queue
+          frameBufferRef.current.push({ frame: base64Data, timestamp });
+          
+          // Limit buffer size to last 30 frames (~3 seconds at 10fps)
+          if (frameBufferRef.current.length > 30) {
+            frameBufferRef.current.shift();
+          }
 
-    try {
-      await fetch(BACKEND_CONFIG.frameEndpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          roomId,
-          userId,
-          timestamp: Date.now(),
-          frame: base64Data,
-        }),
-      });
-    } catch (err) {
-      console.error('Failed to send frame:', err);
+          // Callback to send frame
+          if (onFrame) {
+            onFrame(base64Data, timestamp);
+          }
+
+          lastCaptureTimeRef.current = now;
+        }
+      }
     }
-  }, [roomId, userId]);
+
+    if (enabled) {
+      requestRef.current = requestAnimationFrame(captureFrame);
+    }
+  }, [enabled, onFrame]);
 
   const startExtraction = useCallback(async () => {
     try {
       setError(null);
       
-      // Get camera stream
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
           width: { ideal: 640 },
           height: { ideal: 480 },
+          facingMode: 'user',
         },
       });
       
       streamRef.current = stream;
 
-      // Create hidden video element
       const video = document.createElement('video');
       video.srcObject = stream;
       video.autoplay = true;
@@ -71,7 +85,6 @@ export const useFrameExtractor = ({ roomId, userId, enabled }: UseFrameExtractor
       video.muted = true;
       videoRef.current = video;
 
-      // Create hidden canvas for frame extraction
       const canvas = document.createElement('canvas');
       canvas.width = FRAME_CONFIG.width;
       canvas.height = FRAME_CONFIG.height;
@@ -79,22 +92,20 @@ export const useFrameExtractor = ({ roomId, userId, enabled }: UseFrameExtractor
 
       await video.play();
 
-      // Start frame capture interval
-      const intervalMs = 1000 / FRAME_CONFIG.fps;
-      intervalRef.current = window.setInterval(captureAndSendFrame, intervalMs);
-
       setIsExtracting(true);
+      lastCaptureTimeRef.current = Date.now();
+      requestRef.current = requestAnimationFrame(captureFrame);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to start camera';
       setError(message);
       console.error('Frame extraction error:', err);
     }
-  }, [captureAndSendFrame]);
+  }, [captureFrame]);
 
   const stopExtraction = useCallback(() => {
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
+    if (requestRef.current) {
+      cancelAnimationFrame(requestRef.current);
+      requestRef.current = null;
     }
 
     if (streamRef.current) {
@@ -105,6 +116,7 @@ export const useFrameExtractor = ({ roomId, userId, enabled }: UseFrameExtractor
     videoRef.current = null;
     canvasRef.current = null;
     setIsExtracting(false);
+    frameBufferRef.current = [];
   }, []);
 
   useEffect(() => {
@@ -122,6 +134,7 @@ export const useFrameExtractor = ({ roomId, userId, enabled }: UseFrameExtractor
   return {
     isExtracting,
     error,
+    frameBuffer: frameBufferRef.current,
     startExtraction,
     stopExtraction,
   };
