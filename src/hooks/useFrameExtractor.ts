@@ -44,8 +44,9 @@ export const useFrameExtractor = ({ enabled, onFrame }: UseFrameExtractorOptions
           // Add to local buffer queue
           frameBufferRef.current.push({ frame: base64Data, timestamp });
           
-          // Limit buffer size to last 30 frames (~3 seconds at 10fps)
-          if (frameBufferRef.current.length > 30) {
+          // Aggressively limit buffer to last 3 frames (~1 second at 3fps)
+          // This prevents old frame queue from causing prediction lag
+          if (frameBufferRef.current.length > 3) {
             frameBufferRef.current.shift();
           }
 

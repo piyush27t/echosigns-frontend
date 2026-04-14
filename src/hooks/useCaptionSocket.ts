@@ -64,78 +64,129 @@ export const useCaptionSocket = ({ roomId, userId, userName, enabled }: UseCapti
     socket.on('prediction', (data) => {
       try {
         console.log('Received prediction:', data);
-        let textString = String(data.text || '');
-        const cleanText = textString.trim().toLowerCase();
+        let textString = String(data.text || '').trim();
         
-        // Custom mapping for specific predictions
-        const predictionMappings: Record<string, string> = {
-          'a': 'Hi Welcome to Echosigns',
-          'o': 'Good Morning! This is Piyush',
-          'b': 'Its my pleasure to work with you all here'
-        };
-
-        if (predictionMappings[cleanText]) {
-          textString = predictionMappings[cleanText];
-        }
-
-        if (!cleanText || ['none', 'null', 'padding', 'pad', 'no hand', 'nothing', 'unknown'].includes(cleanText)) {
-          setCurrentCaption(null);
-          lastSeenTextRef.current = ''; // Reset memory when "no hand" is detected
-          if (clearCaptionTimeout.current) {
-            clearTimeout(clearCaptionTimeout.current);
-            clearCaptionTimeout.current = null;
-          }
+        // Filter out predictions with brackets or special characters (e.g., [a], [o])
+        if (textString.includes('[') || textString.includes(']')) {
+          console.log('Filtered out bracket prediction:', textString);
           return;
         }
 
+        // Ignore zero/no-hand predictions - only accept predictions with confidence > 0
+        // Confidence 0 means either no hand detected or low quality prediction
+        const confidence = data.confidence || 0;
+        if (confidence === 0) {
+          console.log('Filtered out zero confidence prediction (no hand detected):', textString);
+          return;
+        }
+
+        const cleanText = textString.toLowerCase();
+        
+        // Custom mapping for specific predictions (in case backend sends single letters)
+        const predictionMappings: Record<string, string> = {
+          'a': 'Hi Welcome to Echosigns',
+          'o': 'Good Morning! This is Piyush',
+          'b': 'Its my pleasure to work with you all here',
+          'v': 'Welcome to Pune Institue of Computer Technology',
+          'i': 'Echosigns is a sign language to Caption Convertor',
+          'u': 'We are a team of Nishil, Prayag, Kshitij, Piyush'
+        };
+
+        const isNone = !cleanText || ['none', 'null', 'padding', 'pad', 'no hand', 'nothing', 'unknown'].includes(cleanText);
+
+        // If it's a "none" prediction or not a recognized gesture, ignore it
+        if (isNone) {
+          return;
+        }
+
+        // Check if this is a single letter (old format) or full caption (new format)
+        let finalCaptionText = textString;
+        
+        // If it's a single letter, try to map it
+        if (cleanText.length === 1 && predictionMappings[cleanText]) {
+          finalCaptionText = predictionMappings[cleanText];
+        }
+        // Otherwise use the text as-is (new backend format sends full captions)
+        
+        // Use the normalized text for comparison (single letter or first few words)
+        const normalizedCaptionText = cleanText.length === 1 ? cleanText : cleanText.substring(0, 10);
+
+        // Only update if the sign (prediction) has actually changed
+        if (lastSeenTextRef.current === normalizedCaptionText) {
+          // Same sign detected again, don't update the display
+          console.log('Duplicate prediction ignored:', normalizedCaptionText);
+          
+          // Still reset the timeout to keep the caption visible while the sign is being held
+          if (clearCaptionTimeout.current) {
+            clearTimeout(clearCaptionTimeout.current);
+          }
+          
+          clearCaptionTimeout.current = window.setTimeout(() => {
+            setCurrentCaption(null);
+            lastSeenTextRef.current = '';
+            clearCaptionTimeout.current = null;
+          }, 2500);
+          
+          return;
+        }
+
+        // Prevent rapid sign changes - ignore predictions arriving within 500ms of last update
+        // This prevents the streaming confidence scores from creating multiple caption updates
+        const now = Date.now();
+        if (now - lastSeenTimeRef.current < 500) {
+          console.log('Prediction too soon, ignoring:', normalizedCaptionText, '(only', now - lastSeenTimeRef.current, 'ms since last)');
+          return;
+        }
+        lastSeenTimeRef.current = now;
+
+        // New sign detected - update the caption
+        const captionId = `caption-${data.userId}-${normalizedCaptionText}`;
+
         const caption: Caption = {
-          id: `${data.userId}-${data.timestamp}`,
-          text: textString,
+          id: captionId,
+          text: finalCaptionText,
           userId: data.userId,
           userName: data.userName || 'Unknown',
           timestamp: data.timestamp,
         };
 
-        // Normalize text for comparison to ignore whitespace/case variation
-        const normalizedCaptionText = caption.text.trim().toLowerCase();
-
-        // Filter out spam of the exact same prediction (normalized) to allow timeout to clear it
-        if (lastSeenTextRef.current === normalizedCaptionText && (Date.now() - lastSeenTimeRef.current < 2000)) {
-           // If it's the same word and happened recently, we DO NOT reset the timeout here.
-           // This forces the "Hello" to eventually disappear even if the backend is sticky!
-           lastSeenTimeRef.current = Date.now();
-           return;
+        // Send reset signal to backend to clear old prediction state
+        // This prevents the model from processing old frames from the previous sign
+        if (socketRef.current?.connected) {
+          socketRef.current.emit('reset_prediction_state', {
+            roomId,
+            userId,
+            userName,
+            reason: 'sign_changed',
+            timestamp: data.timestamp,
+          });
+          console.log('Sent reset signal for sign change:', normalizedCaptionText);
         }
 
-        // It's a NEW word (or 2 seconds have passed since we last saw this word).
-        lastSeenTextRef.current = normalizedCaptionText;
-        lastSeenTimeRef.current = Date.now();
+        // Update current caption with new sign
         setCurrentCaption(caption);
-
-        if (clearCaptionTimeout.current) {
-          clearTimeout(clearCaptionTimeout.current);
-        }
+        lastSeenTextRef.current = normalizedCaptionText;
         
-        // Set a new timeout to clear this new word after 1.5s
-        clearCaptionTimeout.current = window.setTimeout(() => {
-          setCurrentCaption(null);
-          // Crucially: reset lastSeenTextRef when the caption is cleared!
-          // This ensures that if the user signs the same word again 1.6s later,
-          // it counts as NEW and shows up immediately!
-          lastSeenTextRef.current = '';
-          clearCaptionTimeout.current = null;
-        }, 1500);
-
-        // Also update the history list but avoid consecutive duplicates rapidly
+        // Update history list
         setCaptions(prev => {
           const last = prev[prev.length - 1];
-          // Use normalized text for history duplicate check as well
           const lastTextClean = last?.text.trim().toLowerCase();
-          if (last && lastTextClean === normalizedCaptionText && (caption.timestamp - last.timestamp < 3000)) {
+          if (last && lastTextClean === finalCaptionText.trim().toLowerCase() && (caption.timestamp - last.timestamp < 3000)) {
             return prev;
           }
           return [...prev.slice(-50), caption];
         });
+
+        // Reset the clearing timeout for new signs
+        if (clearCaptionTimeout.current) {
+          clearTimeout(clearCaptionTimeout.current);
+        }
+        
+        clearCaptionTimeout.current = window.setTimeout(() => {
+          setCurrentCaption(null);
+          lastSeenTextRef.current = '';
+          clearCaptionTimeout.current = null;
+        }, 2500);
 
       } catch (err) {
         console.error('Failed to parse prediction message:', err);

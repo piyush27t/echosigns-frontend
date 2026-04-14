@@ -15,7 +15,7 @@ export const BACKEND_CONFIG = {
 
 // Frame Extraction Configuration
 export const FRAME_CONFIG = {
-  fps: 10, // 100ms interval (1000/10 = 100ms)
+  fps: 3, // 333ms interval (1000/3) - reduced from 10 to prevent backend queue buildup
   width: 224,
   height: 224,
   quality: 0.7, // JPEG compression quality (0-1)
