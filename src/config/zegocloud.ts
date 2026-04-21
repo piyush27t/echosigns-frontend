@@ -1,8 +1,8 @@
 // ZEGOCLOUD Configuration
 // Replace these with your actual ZEGOCLOUD credentials
 export const ZEGOCLOUD_CONFIG = {
-  appID: 719075091, // Your ZEGOCLOUD App ID (number)
-  serverSecret: 'b284f41eba483dd8707e49f30c049add', // Your ZEGOCLOUD Server Secret
+  appID: 1614816231, // Your ZEGOCLOUD App ID (number)
+  serverSecret: 'ad04559bd1ae97e147e7e683f83817a9', // Your ZEGOCLOUD Server Secret
 };
 
 // Backend Configuration
