@@ -1,14 +1,14 @@
 // ZEGOCLOUD Configuration
 // Replace these with your actual ZEGOCLOUD credentials
 export const ZEGOCLOUD_CONFIG = {
-  appID: 1614816231, // Your ZEGOCLOUD App ID (number)
-  serverSecret: 'ad04559bd1ae97e147e7e683f83817a9', // Your ZEGOCLOUD Server Secret
+  appID: Number(import.meta.env.VITE_ZEGO_APP_ID) || 1614816231, // Your ZEGOCLOUD App ID (number)
+  serverSecret: import.meta.env.VITE_ZEGO_SERVER_SECRET || 'ad04559bd1ae97e147e7e683f83817a9', // Your ZEGOCLOUD Server Secret
 };
 
 // Backend Configuration
 export const BACKEND_CONFIG = {
   // Socket.IO server URL
-  socketUrl: 'https://echosigns-ml.onrender.com',
+  socketUrl: import.meta.env.VITE_BACKEND_URL || 'https://echosigns-ml.onrender.com',
   // Session timeout in seconds
   sessionTimeout: 120,
 };
